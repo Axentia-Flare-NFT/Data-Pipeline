@@ -4,7 +4,6 @@ import json
 import datetime
 from typing import List, Dict, Optional
 import time
-import random
 import os
 from dotenv import load_dotenv
 
@@ -12,15 +11,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class OpenSeaCollector:
-    """
-    Collects NFT data from OpenSea API for training data collection.
-    Falls back to mock data if API access is limited.
-    """
+    """Collects NFT data from OpenSea API."""
     
     def __init__(self, api_key: Optional[str] = None):
         self.base_url = "https://api.opensea.io/api/v2"
         
-        # Use provided API key or load from environment
         if not api_key:
             api_key = os.getenv('OPENSEA_API_KEY')
         
@@ -32,10 +27,9 @@ class OpenSeaCollector:
             self.headers["X-API-KEY"] = api_key
             print(f"✅ Using OpenSea API key: {api_key[:8]}...")
         else:
-            print("⚠️  No OpenSea API key found. Will use mock data if needed.")
+            print("⚠️ No OpenSea API key found.")
         
         self.client = httpx.AsyncClient(headers=self.headers, timeout=30.0)
-        self.use_mock_data = False
     
     async def get_collection_stats(self, collection_slug: str) -> Dict:
         """Get basic stats for a collection."""
@@ -46,26 +40,26 @@ class OpenSeaCollector:
             return response.json()
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 403:
-                print(f"⚠️  OpenSea API requires authentication. Using mock data for {collection_slug}")
-                self.use_mock_data = True
-                return self._get_mock_collection_stats(collection_slug)
+                raise ValueError(f"OpenSea API authentication failed for {collection_slug}. Please check your API key or upgrade to a paid tier.")
             else:
-                print(f"Error fetching collection stats for {collection_slug}: {e}")
-                return {}
+                raise ValueError(f"OpenSea API error for {collection_slug}: HTTP {e.response.status_code}")
         except Exception as e:
-            print(f"Error fetching collection stats for {collection_slug}: {e}")
-            return {}
+            raise ValueError(f"Failed to fetch collection stats for {collection_slug}: {e}")
     
     async def get_collection_events(self, collection_slug: str, event_type: str = "sale", 
-                                  limit: int = 50, after: Optional[str] = None) -> Dict:
+                                  limit: int = 50, next_cursor: Optional[str] = None,
+                                  before_timestamp: Optional[int] = None, 
+                                  after_timestamp: Optional[int] = None) -> Dict:
         """
-        Get recent sale events for a collection.
+        Get sale events for a collection with date filtering.
         
         Args:
             collection_slug: OpenSea collection slug
             event_type: Type of event ('sale', 'transfer', etc.)
             limit: Number of events to fetch (max 100)
-            after: Cursor for pagination
+            next_cursor: Cursor for pagination
+            before_timestamp: Unix epoch timestamp in seconds - only events before this date
+            after_timestamp: Unix epoch timestamp in seconds - only events after this date
         """
         try:
             url = f"{self.base_url}/events/collection/{collection_slug}"
@@ -73,24 +67,23 @@ class OpenSeaCollector:
                 "event_type": event_type,
                 "limit": min(limit, 100)
             }
-            if after:
-                params["after"] = after
+            if next_cursor:
+                params["next"] = next_cursor
+            if before_timestamp:
+                params["before"] = before_timestamp
+            if after_timestamp:
+                params["after"] = after_timestamp
             
             response = await self.client.get(url, params=params)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 403:
-                if not self.use_mock_data:
-                    print(f"⚠️  OpenSea API requires authentication. Using mock data for {collection_slug}")
-                    self.use_mock_data = True
-                return self._get_mock_collection_events(collection_slug, limit)
+                raise ValueError(f"OpenSea API authentication failed for {collection_slug}. Please check your API key or upgrade to a paid tier.")
             else:
-                print(f"Error fetching events for {collection_slug}: {e}")
-                return {}
+                raise ValueError(f"OpenSea API error for {collection_slug}: HTTP {e.response.status_code}")
         except Exception as e:
-            print(f"Error fetching events for {collection_slug}: {e}")
-            return {}
+            raise ValueError(f"Failed to fetch collection events for {collection_slug}: {e}")
     
     async def get_trending_collections(self, limit: int = 10) -> List[str]:
         """Get trending collections from OpenSea."""
@@ -139,102 +132,7 @@ class OpenSeaCollector:
         ]
         return trending_collections[:limit]
     
-    def _get_mock_collection_stats(self, collection_slug: str) -> Dict:
-        """Generate realistic mock collection stats."""
-        mock_stats = {
-            "boredapeyachtclub": {
-                "collection": {"name": "Bored Ape Yacht Club"},
-                "total": {
-                    "floor_price": 12.5,
-                    "volume": 645123.4,
-                    "num_owners": 6420
-                }
-            },
-            "mutant-ape-yacht-club": {
-                "collection": {"name": "Mutant Ape Yacht Club"},
-                "total": {
-                    "floor_price": 4.2,
-                    "volume": 123456.7,
-                    "num_owners": 8901
-                }
-            },
-            "cryptopunks": {
-                "collection": {"name": "CryptoPunks"},
-                "total": {
-                    "floor_price": 85.0,
-                    "volume": 987654.3,
-                    "num_owners": 3456
-                }
-            },
-            "azuki": {
-                "collection": {"name": "Azuki"},
-                "total": {
-                    "floor_price": 8.7,
-                    "volume": 234567.8,
-                    "num_owners": 5432
-                }
-            },
-            "pudgypenguins": {
-                "collection": {"name": "Pudgy Penguins"},
-                "total": {
-                    "floor_price": 6.3,
-                    "volume": 156789.2,
-                    "num_owners": 4321
-                }
-            }
-        }
-        
-        return mock_stats.get(collection_slug, {
-            "collection": {"name": collection_slug.replace("-", " ").title()},
-            "total": {
-                "floor_price": random.uniform(1.0, 50.0),
-                "volume": random.uniform(10000, 500000),
-                "num_owners": random.randint(1000, 10000)
-            }
-        })
-    
-    def _get_mock_collection_events(self, collection_slug: str, limit: int) -> Dict:
-        """Generate realistic mock sale events."""
-        base_time = datetime.datetime.now(datetime.timezone.utc)
-        events = []
-        
-        collection_stats = self._get_mock_collection_stats(collection_slug)
-        floor_price = collection_stats.get("total", {}).get("floor_price", 10.0)
-        
-        for i in range(limit):
-            # Generate sale timestamp (recent sales within last 7 days)
-            hours_ago = random.uniform(1, 168)  # 1 hour to 7 days ago
-            sale_time = base_time - datetime.timedelta(hours=hours_ago)
-            
-            # Generate sale price around floor price with variation
-            price_multiplier = random.uniform(0.8, 3.0)  # 80% to 300% of floor
-            sale_price_eth = floor_price * price_multiplier
-            sale_price_wei = int(sale_price_eth * 1e18)
-            
-            # Generate token ID
-            token_id = str(random.randint(1, 10000))
-            
-            event = {
-                "event_timestamp": sale_time.isoformat().replace('+00:00', 'Z'),
-                "nft": {
-                    "identifier": token_id,
-                    "name": f"{collection_stats['collection']['name']} #{token_id}",
-                    "opensea_url": f"https://opensea.io/assets/ethereum/{collection_slug}/{token_id}"
-                },
-                "payment": {
-                    "quantity": str(sale_price_wei)
-                },
-                "to_account": {
-                    "address": f"0x{''.join(random.choices('0123456789abcdef', k=40))}"
-                },
-                "from_account": {
-                    "address": f"0x{''.join(random.choices('0123456789abcdef', k=40))}"
-                },
-                "transaction": f"0x{''.join(random.choices('0123456789abcdef', k=64))}"
-            }
-            events.append(event)
-        
-        return {"asset_events": events}
+
     
     async def get_nft_details(self, collection_slug: str, identifier: str) -> Dict:
         """Get detailed information about a specific NFT."""
@@ -248,13 +146,34 @@ class OpenSeaCollector:
             return {}
     
     async def collect_sample_data(self, collection_slugs: List[str], 
-                                sales_per_collection: int = 20) -> List[Dict]:
+                                sales_per_collection: int = 20,
+                                use_historical_data: bool = True) -> List[Dict]:
         """
         Collect sample NFT sale data from multiple collections.
+        
+        Args:
+            collection_slugs: List of OpenSea collection slugs
+            sales_per_collection: Number of sales to collect per collection
+            use_historical_data: If True, filter for 2019-2022 historical data
         
         Returns a list of sale events with relevant metadata for Twitter searching.
         """
         all_sales = []
+        
+        # Set date range for historical data (2019-2022)
+        if use_historical_data:
+            import datetime
+            # Use 2019-2022 for better Twitter data correlation
+            # Convert dates to Unix timestamps (seconds)
+            start_date = datetime.datetime(2019, 1, 1, tzinfo=datetime.timezone.utc)
+            end_date = datetime.datetime(2023, 1, 1, tzinfo=datetime.timezone.utc)
+            after_timestamp = int(start_date.timestamp())   # Start of 2019
+            before_timestamp = int(end_date.timestamp())    # End of 2022
+            print(f"📅 Filtering for historical sales: {start_date.isoformat()} to {end_date.isoformat()}")
+            print(f"    Unix timestamps: {after_timestamp} to {before_timestamp}")
+        else:
+            after_timestamp = None
+            before_timestamp = None
         
         for collection_slug in collection_slugs:
             print(f"Collecting data for collection: {collection_slug}")
@@ -262,14 +181,17 @@ class OpenSeaCollector:
             # Get collection stats first
             stats = await self.get_collection_stats(collection_slug)
             
-            # Get recent sales
+            # Get historical sales with date filtering
             events_data = await self.get_collection_events(
                 collection_slug, 
                 event_type="sale", 
-                limit=sales_per_collection
+                limit=sales_per_collection,
+                after_timestamp=after_timestamp,
+                before_timestamp=before_timestamp
             )
             
             if "asset_events" in events_data:
+                print(f"  📊 Found {len(events_data['asset_events'])} historical sales")
                 for event in events_data["asset_events"]:
                     try:
                         sale_data = self._extract_sale_data(event, collection_slug, stats)
@@ -278,6 +200,8 @@ class OpenSeaCollector:
                     except Exception as e:
                         print(f"Error processing event: {e}")
                         continue
+            else:
+                print(f"  ⚠️  No historical sales found for {collection_slug}")
             
             # Rate limiting - be respectful to OpenSea API
             await asyncio.sleep(0.5)

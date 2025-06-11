@@ -1,231 +1,216 @@
 # NFT Data Collection Pipeline
 
-**Enterprise-grade NFT data collection with advanced consensus sentiment analysis**
+A streamlined NFT data collection and sentiment analysis pipeline that combines OpenSea market data, Twitter social metrics, and AI-powered sentiment analysis for machine learning training.
 
-Collect comprehensive NFT datasets with social metrics, sentiment analysis, and market data for machine learning and research.
+## 🚀 Quick Start
 
-## 🚀 Features
-
-- **📊 Complete NFT Data**: Sales, prices, metadata from OpenSea
-- **🐦 Social Metrics**: Twitter engagement and reach analysis  
-- **🤖 Advanced Sentiment**: Consensus learning with 300+ LLMs via OpenRouter
-- **⚡ Fast & Scalable**: Optimized for large datasets (1000+ NFTs)
-- **📁 Clean Output**: Production-ready CSV files for ML training
-- **🛡️ Robust**: Error handling, rate limiting, retry logic
-
-## 📁 Project Structure
-
-```
-NFT-Scraping/
-├── quick_test.py              # Quick pipeline test (3-5 NFTs)
-├── full_collection.py         # Full collection (1000+ NFTs)  
-├── data_collector.py          # Main orchestrator
-├── opensea_collector.py       # OpenSea API integration
-├── twitter_scraper.py         # Twitter data collection
-├── sentiment_analyzer_advanced.py  # Flare AI consensus learning
-├── flare-ai-consensus/        # Advanced consensus framework
-├── requirements.txt           # Dependencies
-└── .env                       # API keys (create this)
-```
-
-## ⚡ Quick Start
-
-### 1. Setup Environment
-
+### 1. Install Dependencies
 ```bash
-# Clone repository
-git clone <repository-url>
-cd NFT-Scraping
-
-# Install dependencies
 pip3 install -r requirements.txt
-
-# Create environment file
-cp .env.example .env
 ```
 
-### 2. Add API Keys
-
-Create `.env` file with your credentials:
-
+### 2. Set Environment Variables
+Create a `.env` file with your API keys:
 ```bash
-# Required for sentiment analysis
-OPENROUTER_API_KEY=your_openrouter_key_here
-
-# Required for social metrics
-X_USERNAME=your_twitter_username
-X_EMAIL=your_twitter_email  
-X_PASSWORD=your_twitter_password
-
-# Optional (higher rate limits)
-OPENSEA_API_KEY=your_opensea_key_here
+OPENSEA_API_KEY=your_opensea_api_key_here
+APIFY_API_KEY=your_apify_api_key_here  
+OPENROUTER_API_KEY=your_openrouter_api_key_here
 ```
 
-### 3. Run Quick Test
+### 3. Run the Pipeline
 
+**Quick Test (3 NFTs, 5 tweets each):**
 ```bash
-python3 quick_test.py
+python3 run_pipeline.py --mode test
 ```
 
-### 4. Run Full Collection
-
-```bash
-python3 full_collection.py
+**Full Production Run (1000 NFTs, 15 tweets each):**
+```bash  
+python3 run_pipeline.py --mode full
 ```
 
-## 🔑 API Keys Setup
+## 📊 What It Does
 
-### OpenRouter (Required for Sentiment)
-1. Visit [OpenRouter.ai](https://openrouter.ai/keys)
-2. Create account and generate API key
-3. Add credits for paid tier models (recommended)
+This pipeline automatically:
 
-### Twitter (Required for Social Metrics)
-- Use your existing Twitter account credentials
-- Ensure account is in good standing (not rate-limited)
+1. **Collects NFT sales data** from OpenSea API (historical 2019-2022 data for better Twitter correlation)
+2. **Scrapes relevant tweets** from the 24 hours before each NFT sale using Apify
+3. **Analyzes sentiment** using Flare AI Consensus Learning (multi-model agreement)
+4. **Exports CSV files** with combined market + sentiment data for ML training
 
-### OpenSea (Optional)
-1. Visit [OpenSea Developer](https://opensea.io/account/settings)
-2. Generate API key for higher rate limits
+## 🏗️ Pipeline Architecture
 
-## 📊 Output Data
+### Data Flow
+```
+OpenSea Sales → Twitter Search → Sentiment Analysis → CSV Export
+     ↓              ↓                    ↓              ↓
+   Market Data   Social Metrics    AI Consensus     ML Training
+```
 
-### Main Dataset: `nft_data/nft_features.csv`
+### Components
+- **`run_pipeline.py`** - Main orchestrator
+- **`opensea_collector.py`** - OpenSea API integration  
+- **`twitter_scraper_apify.py`** - Apify Twitter scraping
+- **`sentiment_analyzer_advanced.py`** - Flare AI consensus analysis
 
-Complete feature set for ML training:
+## 📄 Output Files
 
-| Column | Description | Type |
-|--------|-------------|------|
-| `nft_name` | NFT identifier | string |
-| `collection_slug` | Collection identifier | string |
-| `sale_price_eth` | Sale price in ETH | float |
-| `transaction_hash` | Blockchain transaction | string |
-| `seller_address` | Seller wallet address | string |
-| `buyer_address` | Buyer wallet address | string |
-| `total_tweets` | Tweet volume | int |
-| `unique_tweeters` | Unique users tweeting | int |
-| `total_engagement` | Likes + retweets + replies | int |
-| `avg_sentiment` | Consensus sentiment (-1 to +1) | float |
-| `sentiment_confidence` | Analysis confidence (0-1) | float |
-| `positive_tweets` | Count of positive tweets | int |
-| `negative_tweets` | Count of negative tweets | int |
-| `neutral_tweets` | Count of neutral tweets | int |
-| `consensus_model_count` | Models used in consensus | int |
+Generated in `nft_data/` directory:
 
-### Additional Files
+- **`nft_features.csv`** - NFT sales with sentiment features for ML training
+- **`nft_metadata.csv`** - Detailed NFT and market metadata  
+- **`raw_tweets.csv`** - Raw tweet data with timestamps and sentiment scores
 
-- `nft_metadata.csv`: NFT details and timestamps
-- `raw_tweets.csv`: Individual tweet data
-
-## 🤖 Sentiment Analysis
-
-**Enterprise-Grade Flare AI Consensus Learning**
-
-- **Framework**: Flare AI Consensus Learning
-- **Models**: 300+ LLMs via OpenRouter 
-- **Method**: Multi-model consensus with aggregation
-- **Speed**: Optimized with 2 fast models, 0 iterations
-- **Quality**: Production-ready enterprise accuracy
-- **Required**: OpenRouter API key
-
-## 📈 Use Cases
-
-- **Price Prediction**: Sentiment → price correlation analysis
-- **Hype Detection**: Social metrics → market timing
-- **Collection Analysis**: Community engagement patterns
-- **Market Research**: NFT ecosystem insights
-- **Academic Research**: Social media impact studies
+### Sample Output
+```csv
+collection_name,nft_name,sale_price_eth,tweet_count,avg_sentiment,consensus_quality
+Boredapeyachtclub,NFT #5172,71.0,5,0.6,0.9
+Pudgypenguins,Pudgy Penguin #1987,5.9,5,0.6,0.9
+```
 
 ## ⚙️ Configuration
 
-### Collection Size
-- **Quick Test**: 4 NFTs across 2 collections (~60-90 seconds)
-- **Full Collection**: 1000+ NFTs (~2-3 hours)
+### Test Mode (Default)
+- **3 NFT sales** from Bored Ape Yacht Club and Pudgy Penguins
+- **5 tweets per NFT** from 24 hours before sale
+- **Historical data** (2019-2022) for better Twitter correlation
+- **~2 minutes runtime**
+
+### Full Mode  
+- **1000 NFT sales** from 6 major collections
+- **15 tweets per NFT** from 24 hours before sale
+- **Historical data** (2019-2022)
+- **~2-3 hours runtime**
+
+To modify collections or parameters, edit the `RUN_MODES` configuration in `run_pipeline.py`.
+
+## 🎯 Use Cases
+
+### Machine Learning Training
+- **Price prediction models** with social sentiment features
+- **Market timing algorithms** using Twitter signals
+- **Sentiment classification** for crypto/NFT content
+
+### Research & Analysis
+- **Academic research** on social sentiment impact on NFT pricing
+- **Market analysis** of Twitter buzz vs. sales correlation
+- **Trend identification** for emerging NFT collections
+
+## 💰 API Costs
+
+- **OpenSea**: Free tier (rate limited)
+- **Apify**: ~$0.02-0.05 per tweet search
+- **OpenRouter**: ~$0.001-0.01 per sentiment analysis
+
+**Estimated costs:**
+- Test mode: ~$0.50-1.00
+- Full mode: ~$50-100
+
+## 🔧 API Setup
+
+### OpenSea API
+1. Sign up at [OpenSea Developer Portal](https://docs.opensea.io/reference/api-overview)
+2. Get your API key (free tier available)
+3. Add to `.env`: `OPENSEA_API_KEY=your_key`
+
+### Apify API
+1. Sign up at [Apify.com](https://apify.com)
+2. Get API token from dashboard
+3. Add to `.env`: `APIFY_API_KEY=your_key`
+
+### OpenRouter API  
+1. Sign up at [OpenRouter.ai](https://openrouter.ai)
+2. Get API key for AI model access
+3. Add to `.env`: `OPENROUTER_API_KEY=your_key`
+
+## 🚨 Important Notes
+
+### Data Quality
+- **Time filtering**: Only tweets from 24h before sale are included
+- **Deduplication**: Removes duplicate tweets automatically  
+- **Historical focus**: Uses 2019-2022 data when Twitter was more active for NFTs
+- **Multi-model consensus**: Sentiment scores from multiple AI models for accuracy
 
 ### Rate Limiting
-- **Twitter**: 8 seconds between NFTs, 3 minutes between collections
-- **OpenSea**: Respects API limits
-- **OpenRouter**: Optimized for paid tier
+- Built-in rate limiting for all APIs
+- Automatic retries on failures
+- Progress tracking with detailed logs
 
-### Tweet Analysis
-- **Quick Test**: 6 tweets per NFT (optimized for speed)
-- **Full Collection**: 20 tweets per NFT (comprehensive analysis)
-
-### Popular Collections Included
-```python
-POPULAR_COLLECTIONS = [
-    'boredapeyachtclub', 'cryptopunks', 'azuki',
-    'pudgypenguins', 'doodles-official', 'moonbirds',
-    'clonex', 'otherdeed', 'veefriends', 'cool-cats-nft',
-    # ... 20 total collections
-]
-```
-
-## 🛠️ Advanced Usage
-
-### Custom Collections
-Edit collections list in `full_collection.py`:
-
-```python
-CUSTOM_COLLECTIONS = [
-    'your-collection-slug',
-    'another-collection'
-]
-```
-
-### Sentiment Model Selection
-Modify models in `sentiment_analyzer_advanced.py`:
-
-```python
-models = [
-    ModelConfig(model_id="anthropic/claude-3-haiku", ...),
-    ModelConfig(model_id="openai/gpt-4o-mini", ...),
-    # Add more models as needed
-]
-```
-
-## 🔧 Troubleshooting
+## 🔍 Troubleshooting
 
 ### Common Issues
 
-**"Twitter rate limited"**
-- Wait 15-30 minutes and retry
-- Ensure account is in good standing
-
-**"OpenRouter API error"**  
-- Check API key validity
-- Ensure sufficient credits
-- Try different model selection
-
-**"No NFT data found"**
-- Verify collection slug is correct
-- Check OpenSea API key
-- Try different collection
-
-### Debug Mode
-Run with verbose logging:
+**❌ Missing API Keys**
 ```bash
-export LOG_LEVEL=DEBUG
-python3 quick_test.py
+❌ Missing API keys: OPENSEA_API_KEY, APIFY_API_KEY
 ```
+**Solution**: Add all required keys to your `.env` file
 
-## 📄 License
+**❌ No NFT Sales Data**
+```bash
+❌ No sales data collected
+```
+**Solution**: Check OpenSea API key or try different collections
 
-MIT License - see LICENSE file for details.
+**❌ No Tweets Found**
+```bash
+⚠️ No tweets found
+```
+**Solution**: Normal for some NFTs - historical data may have limited Twitter activity
+
+**❌ Sentiment Analysis Failed**
+```bash
+❌ Error analyzing sentiment
+```
+**Solution**: Check OpenRouter API key and account balance
+
+### Debug Tips
+1. **Start with test mode** to validate setup
+2. **Check API key permissions** and rate limits
+3. **Monitor costs** in API dashboards
+4. **Review logs** for specific error messages
+
+## 📈 Example Output
+
+After running `python3 run_pipeline.py --mode test`, you'll see:
+
+```bash
+🎯 Running test mode: Quick test run
+🚀 Initializing Quick test run
+📊 Target: 3 NFT sales
+✅ Components initialized
+
+📈 Collecting NFT sales data...
+📊 Collected 2 NFT sales
+
+🐦 Collecting Twitter data...
+  [1/2] NFT #5172
+    ✅ Found 5 tweets
+  [2/2] Pudgy Penguin #1987  
+    ✅ Found 5 tweets
+🐦 Collected 10 total tweets
+
+🧠 Analyzing sentiment for 10 tweets...
+    ✅ NFT #5172: 0.600
+    ✅ Pudgy Penguin #1987: 0.600
+🧠 Analyzed 2 NFT sales
+
+💾 Saving results...
+✅ Results saved
+
+🎉 Pipeline completed in 0:01:14
+📊 NFT sales: 2
+🐦 Tweets: 10
+🧠 Sentiment analyzed: 2 sales
+```
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create feature branch
-3. Submit pull request with tests
+This pipeline is designed to be simple and maintainable. The codebase has been cleaned and optimized for:
 
-## 📧 Support
+- **Readability**: Clear, concise code
+- **Maintainability**: Minimal dependencies  
+- **Performance**: Efficient API usage
+- **Reliability**: Built-in error handling
 
-For issues or questions:
-- Create GitHub issue
-- Check troubleshooting section
-- Review API provider documentation
-
----
-
-**Built with Flare AI Consensus Learning** 🧠⚡ 
+Feel free to submit issues or pull requests! 
