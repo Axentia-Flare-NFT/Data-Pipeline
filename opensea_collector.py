@@ -6,7 +6,7 @@ from typing import List, Dict, Optional
 import time
 import os
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Load environment variables from .env file
 load_dotenv()
@@ -246,6 +246,12 @@ class OpenSeaCollector:
                 print(f"  📊 Found {len(events_data['asset_events'])} historical sales")
                 for event in events_data["asset_events"]:
                     try:
+                        # Debug: Print event structure
+                        print(f"\nEvent data structure for {collection_slug}:")
+                        print("Keys in event:", list(event.keys()))
+                        print("NFT data:", event.get("nft"))
+                        print("Timestamp fields:", {k: v for k, v in event.items() if 'time' in k.lower() or 'date' in k.lower()})
+                        
                         # Get detailed NFT information including rarity
                         nft = event.get("nft", {})
                         if not isinstance(nft, dict):
@@ -267,6 +273,8 @@ class OpenSeaCollector:
                         continue
             else:
                 print(f"  ⚠️  No historical sales found for {collection_slug}")
+                # Debug: Print full response
+                print("Full response:", events_data)
             
             # Rate limiting - be respectful to OpenSea API
             await asyncio.sleep(0.5)
@@ -279,25 +287,79 @@ class OpenSeaCollector:
             # Extract basic sale data
             nft = event.get("nft", {})
             if not isinstance(nft, dict):
+                print(f"Invalid NFT data type: {type(nft)}")
                 return None
+            
+            # Get and validate timestamp (OpenSea API v2 format)
+            event_timestamp = event.get("event_timestamp")
+            if not event_timestamp:
+                print(f"Missing timestamp for {collection_slug} NFT {nft.get('identifier')}")
+                return None
+                
+            try:
+                # Convert Unix timestamp to datetime
+                sale_time = datetime.fromtimestamp(event_timestamp, tz=timezone.utc)
+                sale_timestamp = sale_time.isoformat()
+                sale_timestamp_unix = event_timestamp
+                twitter_search_start = (sale_time - timedelta(days=1)).isoformat()
+            except (ValueError, TypeError) as e:
+                print(f"Invalid timestamp format for {collection_slug} NFT {nft.get('identifier')}: {event_timestamp}")
+                return None
+                
+            # Get payment information
+            payment = event.get("payment", {})
+            if isinstance(payment, str):
+                try:
+                    payment = json.loads(payment)
+                except json.JSONDecodeError:
+                    payment = {}
+            elif not isinstance(payment, dict):
+                payment = {}
+            
+            # Get buyer and seller information
+            buyer = event.get("buyer", {})
+            if isinstance(buyer, str):
+                buyer_address = buyer
+            else:
+                buyer_address = buyer.get("address", "") if isinstance(buyer, dict) else ""
+                
+            seller = event.get("seller", {})
+            if isinstance(seller, str):
+                seller_address = seller
+            else:
+                seller_address = seller.get("address", "") if isinstance(seller, dict) else ""
+            
+            # Get transaction information
+            transaction = event.get("transaction", {})
+            if isinstance(transaction, str):
+                transaction_hash = transaction
+            else:
+                transaction_hash = transaction.get("transaction_hash", "") if isinstance(transaction, dict) else ""
+            
+            # Calculate price in ETH
+            price_wei = payment.get("quantity", "0") if isinstance(payment, dict) else "0"
+            try:
+                price_eth = float(price_wei) / 1e18
+            except (ValueError, TypeError):
+                price_eth = 0
                 
             sale_data = {
                 "collection_slug": collection_slug,
-                "collection_name": collection_stats.get("name", ""),
+                "collection_name": nft.get("collection") or collection_stats.get("name", ""),
                 "nft_identifier": nft.get("identifier", ""),
                 "nft_name": nft.get("name", ""),
                 "token_id": nft.get("identifier", ""),
-                "sale_price_wei": event.get("total_price", "0"),
-                "sale_price_eth": float(event.get("total_price", "0")) / 1e18,
-                "sale_timestamp": event.get("created_date", ""),
-                "sale_timestamp_unix": int(datetime.fromisoformat(event.get("created_date", "")).timestamp()),
-                "twitter_search_start": (datetime.fromisoformat(event.get("created_date", "")) - timedelta(days=1)).isoformat(),
-                "twitter_search_end": event.get("created_date", ""),
+                "sale_price_wei": price_wei,
+                "sale_price_eth": price_eth,
+                "sale_timestamp": sale_timestamp,
+                "sale_timestamp_unix": sale_timestamp_unix,
+                "twitter_search_start": twitter_search_start,
+                "twitter_search_end": sale_timestamp,
                 "twitter_keywords": self._generate_twitter_keywords(nft, collection_slug),
-                "buyer": event.get("winner_account", {}).get("address", ""),
-                "seller": event.get("seller", {}).get("address", ""),
-                "transaction_hash": event.get("transaction", {}).get("transaction_hash", ""),
-                "opensea_url": f"https://opensea.io/assets/ethereum/{nft.get('contract_address', '')}/{nft.get('identifier', '')}",
+                "buyer": buyer_address,
+                "seller": seller_address,
+                "transaction_hash": transaction_hash,
+                "opensea_url": nft.get("opensea_url", ""),
                 "floor_price": collection_stats.get("floor_price", 0),
                 "total_volume": collection_stats.get("total_volume", 0),
                 "num_owners": collection_stats.get("num_owners", 0),
@@ -310,11 +372,11 @@ class OpenSeaCollector:
                 "neutral_tweets": 0,  # Will be updated by sentiment analyzer
                 "sentiment_range_min": 0.0,  # Will be updated by sentiment analyzer
                 "sentiment_range_max": 0.0,  # Will be updated by sentiment analyzer
-                "rarity_score": nft.get("rarity", {}).get("score"),
-                "rarity_rank": nft.get("rarity", {}).get("rank"),
-                "rarity_max_rank": nft.get("rarity", {}).get("max_rank"),
-                "rarity_tokens_scored": nft.get("rarity", {}).get("tokens_scored"),
-                "trait_count": nft.get("rarity", {}).get("trait_count")
+                "rarity_score": nft.get("rarity", {}).get("score") if isinstance(nft.get("rarity"), dict) else None,
+                "rarity_rank": nft.get("rarity", {}).get("rank") if isinstance(nft.get("rarity"), dict) else None,
+                "rarity_max_rank": nft.get("rarity", {}).get("max_rank") if isinstance(nft.get("rarity"), dict) else None,
+                "rarity_tokens_scored": nft.get("rarity", {}).get("tokens_scored") if isinstance(nft.get("rarity"), dict) else None,
+                "trait_count": nft.get("rarity", {}).get("trait_count") if isinstance(nft.get("rarity"), dict) else None
             }
             
             return sale_data
@@ -326,18 +388,33 @@ class OpenSeaCollector:
     def _generate_twitter_keywords(self, nft: Dict, collection_slug: str) -> List[str]:
         """Generate relevant keywords for Twitter searching."""
         keywords = []
+        collection_name = nft.get("collection") or collection_slug
+        nft_id = nft.get("identifier")
+        nft_name = nft.get("name", "")
         
-        # Collection name variations
-        if nft.get("name"):
-            keywords.append(nft["name"])
+        # Basic collection and NFT terms
+        if nft_name:
+            keywords.append(nft_name)  # e.g. "CryptoPunk #1234"
+            
+        if collection_name and nft_id:
+            keywords.append(f"{collection_name} {nft_id}")  # e.g. "cryptopunks 1234"
+            
+        # Add collection hashtag
+        keywords.append(f"#{collection_slug.replace('-', '')}")  # e.g. "#cryptopunks"
         
-        if nft.get("identifier"):
-            keywords.append(f"#{nft['identifier']}")
+        # Add simple value-related terms
+        keywords.append(f"{collection_name} floor")
+        keywords.append(f"{collection_name} price")
         
-        # Collection slug as hashtag
-        keywords.append("#" + collection_slug.replace("-", ""))
-        
-        return keywords
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_keywords = []
+        for k in keywords:
+            if k.lower() not in seen:
+                seen.add(k.lower())
+                unique_keywords.append(k)
+                
+        return unique_keywords
     
     async def save_sample_data(self, sales_data: List[Dict], filename: str = None):
         """Save collected sample data to JSON file."""

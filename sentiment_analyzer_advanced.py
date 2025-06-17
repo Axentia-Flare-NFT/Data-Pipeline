@@ -41,8 +41,155 @@ class SimpleNFTSentimentAnalyzer:
         self.base_url = "https://openrouter.ai/api/v1"
         self.model = "google/gemini-2.0-flash-001"
         self.client = httpx.AsyncClient(timeout=30.0)
+        
+        # Keywords for filtering relevant tweets
+        self.nft_sentiment_keywords = [
+            # Market sentiment
+            'bullish', 'bearish', 'moon', 'dump', 'floor', 'price', 'pumping', 'dumping',
+            'mooning', 'crashing', 'dipping', 'rising', 'falling', 'skyrocketing', 'plummeting',
+            'rallying', 'tanking', 'soaring', 'dropping', 'surging', 'declining', 'booming',
+            'correction', 'momentum', 'trend', 'volume', 'liquidity', 'volatile', 'stability',
+            
+            # Value assessment
+            'value', 'worth', 'investment', 'potential', 'future', 'roi', 'profit', 'loss',
+            'gains', 'expensive', 'cheap', 'overpriced', 'underpriced', 'bargain', 'premium',
+            'overvalued', 'undervalued', 'fair price', 'market cap', 'valuation', 'priced in',
+            'opportunity', 'risk', 'reward', 'upside', 'downside', 'growth', 'decline',
+            
+            # Project quality
+            'project', 'team', 'utility', 'roadmap', 'community', 'development', 'innovation',
+            'vision', 'execution', 'strategy', 'leadership', 'transparency', 'communication',
+            'partnership', 'collaboration', 'ecosystem', 'adoption', 'usecase', 'application',
+            'technology', 'platform', 'infrastructure', 'foundation', 'governance',
+            
+            # Criticism/praise
+            'scam', 'rug', 'fake', 'legit', 'real', 'trash', 'gem', 'fraud', 'legitimate',
+            'authentic', 'genuine', 'suspicious', 'sketchy', 'shady', 'trustworthy', 'reliable',
+            'unreliable', 'questionable', 'solid', 'weak', 'strong', 'promising', 'disappointing',
+            'impressive', 'underwhelming', 'outstanding', 'mediocre', 'excellent', 'terrible',
+            'amazing', 'awful', 'great', 'poor', 'quality', 'worthless', 'valuable',
+            
+            # Art/aesthetic
+            'artwork', 'design', 'aesthetic', 'beautiful', 'ugly', 'creative', 'unique',
+            'generic', 'original', 'derivative', 'innovative', 'boring', 'exciting', 'stunning',
+            'masterpiece', 'amateur', 'professional', 'artistic', 'style', 'theme',
+            
+            # Community sentiment
+            'community', 'holders', 'paper hands', 'diamond hands', 'whales', 'fud',
+            'fomo', 'hype', 'cope', 'hopium', 'shill', 'believers', 'doubters', 'supporters',
+            'critics', 'sentiment', 'confidence', 'trust', 'distrust', 'faith', 'skepticism',
+            
+            # Rarity/collectible value
+            'rare', 'common', 'unique', 'legendary', 'epic', 'special', 'exclusive',
+            'limited', 'scarce', 'abundant', 'supply', 'demand', 'collectible', 'desirable',
+            'sought after', 'prestigious', 'elite', 'premium', 'tier', 'grade',
+            
+            # Trading terms
+            'buy', 'sell', 'hold', 'trade', 'flip', 'long term', 'short term', 'entry',
+            'exit', 'position', 'accumulate', 'distribute', 'market', 'limit', 'orders',
+            'resistance', 'support', 'breakout', 'breakdown', 'consolidation', 'pattern',
+            
+            # Emotional expressions
+            'love', 'hate', 'believe', 'doubt', 'trust', 'fear', 'confident', 'worried',
+            'excited', 'concerned', 'optimistic', 'pessimistic', 'bullish', 'bearish',
+            'hopeful', 'skeptical', 'enthusiastic', 'cautious', 'passionate', 'indifferent'
+        ]
+        
+        # Keywords to filter out irrelevant tweets
+        self.exclude_patterns = [
+            # Marketplace activities
+            'just bought', 'just sold', 'just listed', 'for sale', 'minted', 'available now',
+            'check out', 'look what I', 'opensea.io', 'rarible.com', 'nft.coinbase.com',
+            'marketplace.', '.eth', 'bid now', 'auction ending', 'mint now', 'whitelist',
+            'presale', 'public sale', 'drop today', 'dropping soon', 'available at',
+            
+            # Promotional content
+            'follow for', 'follow back', 'follow me', 'check my', 'check our', 'link in bio',
+            'link below', 'click here', 'dm me', 'dm for', 'dm to', 'message me',
+            'message for', 'contact', 'join our', 'join the', 'discord.gg', 't.me/',
+            
+            # Trading announcements
+            'floor price:', 'listing at', 'listed at', 'bought for', 'sold for',
+            'price:', 'eth floor', 'current floor', 'last sale', 'last sold',
+            'highest bid', 'lowest ask', 'accepting offers', 'make offer',
+            
+            # Collection announcements
+            'new collection', 'launching soon', 'upcoming project', 'reveal today',
+            'mint date', 'release date', 'announcement:', 'sneak peek', 'teaser',
+            'stay tuned', 'coming soon', 'exclusive access', 'early access',
+            
+            # Giveaways/contests
+            'giveaway', 'airdrop', 'win free', 'contest', 'raffle', 'lottery',
+            'free mint', 'whitelist spot', 'chance to win', 'giving away',
+            
+            # Bot/spam indicators
+            'dm to claim', 'dm to mint', 'dm to buy', 'dm to sell', 'dm to join',
+            'auto dm', 'auto reply', 'bot for', 'generated by', 'powered by',
+            
+            # Generic promotions
+            'dont miss', 'don\'t miss', 'limited time', 'exclusive offer',
+            'special price', 'discount', 'promo', 'promotion', 'deal'
+        ]
+        
         print(f"✅ Simple NFT Sentiment Analyzer initialized with {self.model}")
     
+    def _filter_relevant_tweets(self, tweets: List[Dict]) -> List[Dict]:
+        """Filter tweets to keep only those relevant to NFT sentiment."""
+        relevant_tweets = []
+        seen_users = {}  # Map of user_id to tweet details for logging
+        
+        for tweet in tweets:
+            text = tweet.get('text', '').lower()
+            user_id = tweet.get('author_id')
+            username = tweet.get('username', 'unknown')
+            
+            # Skip if no user ID (required for uniqueness check)
+            if not user_id:
+                print(f"    ⚠️ Skipping tweet without user ID: {text[:50]}...")
+                continue
+                
+            # Skip if tweet is too short
+            if len(text) < 20:
+                print(f"    ⚠️ Skipping short tweet from @{username}: {text}")
+                continue
+                
+            # Skip if tweet contains exclude patterns (announcements, listings, etc.)
+            if any(pattern.lower() in text for pattern in self.exclude_patterns):
+                print(f"    ⚠️ Skipping promotional tweet from @{username}: {text[:50]}...")
+                continue
+                
+            # Check if we already have a tweet from this user
+            if user_id in seen_users:
+                prev_tweet = seen_users[user_id]
+                print(f"    ⚠️ Skipping duplicate user @{username}:")
+                print(f"       Already have: {prev_tweet['text'][:50]}...")
+                print(f"       Skipping: {text[:50]}...")
+                continue
+                
+            # Check if tweet contains sentiment-related keywords
+            if any(keyword.lower() in text for keyword in self.nft_sentiment_keywords):
+                relevant_tweets.append(tweet)
+                seen_users[user_id] = {
+                    'text': text,
+                    'username': username
+                }
+                print(f"    ✅ Keeping tweet from @{username}: {text[:50]}...")
+                
+        print(f"\n    📊 Tweet filtering summary:")
+        print(f"       - Input tweets: {len(tweets)}")
+        print(f"       - Unique users: {len(seen_users)}")
+        print(f"       - Relevant tweets: {len(relevant_tweets)}")
+        print(f"       - Filtered out: {len(tweets) - len(relevant_tweets)} tweets")
+        
+        if relevant_tweets:
+            print("\n    👥 Selected tweets by user:")
+            for tweet in relevant_tweets:
+                username = tweet.get('username', 'unknown')
+                text = tweet.get('text', '')[:50]
+                print(f"       @{username}: {text}...")
+                
+        return relevant_tweets
+
     async def analyze_tweets_sentiment(self, tweets: List[Dict]) -> Dict:
         """
         Analyze sentiment of tweets using Claude 3 Haiku.
@@ -50,21 +197,30 @@ class SimpleNFTSentimentAnalyzer:
         """
         if not tweets:
             return self._empty_sentiment_result()
+            
+        print("\n🔍 Starting tweet filtering and sentiment analysis...")
         
+        # Filter tweets for relevance and uniqueness
+        filtered_tweets = self._filter_relevant_tweets(tweets)
+        
+        if not filtered_tweets:
+            print("⚠️ No relevant tweets found after filtering")
+            return self._empty_sentiment_result()
+            
         # Extract tweet texts
         tweet_texts = []
-        for tweet in tweets:
+        for tweet in filtered_tweets:
             tweet_text = tweet.get('text', '').strip()
-            if tweet_text and len(tweet_text) >= 10:
+            if tweet_text:
                 tweet_texts.append(tweet_text)
-        
+                
         if not tweet_texts:
             return self._empty_sentiment_result()
         
-        print(f"🚀 Analyzing sentiment for {len(tweet_texts)} tweets...")
+        print(f"\n🚀 Analyzing sentiment for {len(tweet_texts)} filtered tweets from {len(set(t.get('author_id') for t in filtered_tweets))} unique users...")
         
         try:
-            # Create conversation with all tweets combined
+            # Create conversation with filtered tweets
             conversation = self._build_sentiment_conversation(tweet_texts)
             
             # Get sentiment from Claude
@@ -88,13 +244,17 @@ class SimpleNFTSentimentAnalyzer:
                 'sentiment_range_min': sentiment_score,
                 'sentiment_range_max': sentiment_score,
                 'analyzed_tweet_count': len(tweet_texts),
+                'unique_users': len(set(t.get('author_id') for t in filtered_tweets)),
                 'consensus_model_count': 1,  # Single model
                 'consensus_iterations': 1,   # Single pass
                 'combined_analysis': True
             }
             
-            print(f"✅ Analysis complete: sentiment={result['avg_sentiment']:.3f}, confidence={result['sentiment_confidence']:.3f}")
-            print(f"   📊 Tweet breakdown: {positive_tweets} positive, {negative_tweets} negative, {neutral_tweets} neutral")
+            print(f"\n✅ Analysis complete:")
+            print(f"   - Sentiment score: {result['avg_sentiment']:.3f}")
+            print(f"   - Confidence: {result['sentiment_confidence']:.3f}")
+            print(f"   - Unique users: {result['unique_users']}")
+            print(f"   - Tweet breakdown: {positive_tweets} positive, {negative_tweets} negative, {neutral_tweets} neutral")
             
             return result
             
@@ -196,78 +356,70 @@ For the collective sentiment consider the dominant themes and overall tone."""
             return ""
     
     def _parse_sentiment_from_response(self, response_text: str) -> tuple[float, float]:
-        """Parse sentiment score from Claude's response."""
+        """Parse sentiment score and confidence from Claude's response."""
         try:
             # Clean the response text - remove any markdown code blocks
             cleaned_text = response_text.replace('```json', '').replace('```', '').strip()
             
             # Parse the JSON response
-            response_json = json.loads(cleaned_text)
+            response_data = json.loads(cleaned_text)
             
-            # Get the overall sentiment score
-            sentiment_score = float(response_json.get('overall_sentiment', 0.0))
+            # Get overall sentiment score
+            sentiment_score = float(response_data.get('overall_sentiment', '0.0'))
             
-            confidence = 0.9  # Default confidence
+            # Calculate confidence based on tweet agreement
+            tweet_sentiments = [t.get('sentiment', 'neutral') for t in response_data.get('tweets', [])]
+            if not tweet_sentiments:
+                return 0.0, 0.5
+                
+            # Count agreement with overall sentiment
+            agreement_count = 0
+            for sentiment in tweet_sentiments:
+                if sentiment == 'positive' and sentiment_score > 0:
+                    agreement_count += 1
+                elif sentiment == 'negative' and sentiment_score < 0:
+                    agreement_count += 1
+                elif sentiment == 'neutral' and abs(sentiment_score) < 0.2:
+                    agreement_count += 1
+                    
+            confidence = (agreement_count / len(tweet_sentiments)) if tweet_sentiments else 0.5
             
             return sentiment_score, confidence
             
-        except json.JSONDecodeError as e:
-            print(f"    ❌ Error parsing JSON response: {e}")
-            return self._fallback_sentiment_analysis(response_text)
-        except Exception as e:
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
             print(f"    ❌ Error parsing sentiment: {e}")
-            return self._fallback_sentiment_analysis(response_text)
-    
-    def _fallback_sentiment_analysis(self, text: str) -> tuple[float, float]:
-        """Fallback sentiment analysis using keyword matching."""
-        text_lower = text.lower()
-        
-        positive_words = ['positive', 'bullish', 'optimistic', 'good', 'strong', 'moon', 'pump']
-        negative_words = ['negative', 'bearish', 'pessimistic', 'bad', 'weak', 'dump', 'crash']
-        
-        positive_count = sum(1 for word in positive_words if word in text_lower)
-        negative_count = sum(1 for word in negative_words if word in text_lower)
-        
-        if positive_count > negative_count:
-            return 0.5, 0.5
-        elif negative_count > positive_count:
-            return -0.5, 0.5
-        else:
-            return 0.0, 0.3
+            return 0.0, 0.5
     
     def _categorize_tweets_by_keywords(self, tweet_texts: List[str], response_text: str = None) -> tuple[int, int, int]:
-        """Categorize tweets by sentiment from the LLM response."""
+        """Categorize tweets as positive, negative, or neutral based on the model's response."""
         try:
             if not response_text:
                 return self._fallback_categorize_tweets(tweet_texts)
-            
+                
             # Clean the response text - remove any markdown code blocks
             cleaned_text = response_text.replace('```json', '').replace('```', '').strip()
             
             # Parse the JSON response
-            response_json = json.loads(cleaned_text)
+            response_data = json.loads(cleaned_text)
             
-            # Count sentiments from the LLM analysis
-            sentiment_counts = {
-                'positive': 0,
-                'negative': 0,
-                'neutral': 0
-            }
+            # Count sentiments from the model's analysis
+            positive = 0
+            negative = 0
+            neutral = 0
             
-            for tweet in response_json.get('tweets', []):
-                sentiment = tweet.get('sentiment', '').lower()
-                if sentiment in sentiment_counts:
-                    sentiment_counts[sentiment] += 1
+            for tweet in response_data.get('tweets', []):
+                sentiment = tweet.get('sentiment', 'neutral').lower()
+                if sentiment == 'positive':
+                    positive += 1
+                elif sentiment == 'negative':
+                    negative += 1
+                else:
+                    neutral += 1
+                    
+            return positive, negative, neutral
             
-            return (
-                sentiment_counts['positive'],
-                sentiment_counts['negative'],
-                sentiment_counts['neutral']
-            )
-            
-        except Exception as e:
+        except (json.JSONDecodeError, KeyError) as e:
             print(f"    ❌ Error categorizing tweets: {e}")
-            # Fallback to keyword-based categorization
             return self._fallback_categorize_tweets(tweet_texts)
     
     def _fallback_categorize_tweets(self, tweet_texts: List[str]) -> tuple[int, int, int]:
@@ -307,6 +459,7 @@ For the collective sentiment consider the dominant themes and overall tone."""
             'sentiment_range_min': 0.0,
             'sentiment_range_max': 0.0,
             'analyzed_tweet_count': 0,
+            'unique_users': 0,
             'consensus_model_count': 0,
             'consensus_iterations': 0
         }

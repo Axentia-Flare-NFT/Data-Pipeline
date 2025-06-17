@@ -99,7 +99,6 @@ class NFTTwitterScraper:
         
         print(f"   🔑 Keywords: {keywords}")
         if search_start and search_end:
-            # Calculate hours for display
             try:
                 from datetime import datetime
                 start_dt = datetime.fromisoformat(search_start.replace('Z', '+00:00'))
@@ -110,6 +109,7 @@ class NFTTwitterScraper:
                 print(f"   📅 Time window: {search_start} to {search_end}")
         
         all_tweets = []
+        seen_users = {}  # Track users and their best tweets
         
         # Search for each keyword
         for keyword in keywords[:3]:  # Limit to top 3 keywords
@@ -132,15 +132,27 @@ class NFTTwitterScraper:
                                     nft_sale.get('sale_timestamp', '')
                                 )
                             })
-                            all_tweets.append(formatted_tweet)
+                            
+                            # Check for duplicate users and keep the best tweet
+                            user_id = formatted_tweet.get('author_id')
+                            if user_id:
+                                current_tweet = formatted_tweet
+                                if user_id in seen_users:
+                                    # Compare tweets and keep the better one
+                                    previous_tweet = seen_users[user_id]
+                                    if self._is_better_tweet(current_tweet, previous_tweet):
+                                        print(f"    🔄 Replacing tweet from user {formatted_tweet.get('username')} with better quality tweet")
+                                        seen_users[user_id] = current_tweet
+                                else:
+                                    seen_users[user_id] = current_tweet
                 
             except Exception as e:
                 print(f"    ❌ Error searching for '{keyword}': {e}")
                 continue
         
-        # Remove duplicates
-        unique_tweets = self._remove_duplicate_tweets(all_tweets)
-        print(f"   🔄 After deduplication: {len(all_tweets)} → {len(unique_tweets)} tweets")
+        # Convert seen_users dictionary to list
+        unique_tweets = list(seen_users.values())
+        print(f"   👥 Collected {len(unique_tweets)} tweets from unique users")
         
         # Filter by time window if available
         if search_start and search_end:
@@ -151,41 +163,55 @@ class NFTTwitterScraper:
             time_filtered_tweets = self._filter_tweets_by_time(unique_tweets, search_start, search_end)
             print(f"   📅 Time filtering: {len(unique_tweets)} → {len(time_filtered_tweets)} tweets")
             
-            # Show which tweets were kept/filtered
-            if len(time_filtered_tweets) > 0:
-                print(f"   ✅ Tweets that passed time filter:")
-                for i, tweet in enumerate(time_filtered_tweets[:3], 1):
-                    tweet_time = tweet.get('created_at', 'Unknown')
-                    hours_before = tweet.get('hours_before_sale', 'Unknown')
-                    tweet_text = tweet.get('text', '')[:40] + '...' if len(tweet.get('text', '')) > 40 else tweet.get('text', '')
-                    print(f"      {i}. {tweet_time} ({hours_before}h before sale) - \"{tweet_text}\"")
-                if len(time_filtered_tweets) > 3:
-                    print(f"      ... and {len(time_filtered_tweets) - 3} more")
-            else:
-                # Check if this was a historical search
-                try:
-                    end_dt = datetime.fromisoformat(search_end.replace('Z', '+00:00'))
-                    days_ago = (datetime.now(timezone.utc) - end_dt).days
-                    if days_ago > 7:
-                        print(f"   ⚠️  No historical tweets found for {days_ago} days ago")
-                        print(f"   💡 New API endpoint should have better historical access")
-                        print(f"   💡 Consider: 1) Using recent NFT sales, 2) Enterprise Twitter API access,")
-                        print(f"              or 3) Alternative historical data sources")
-                except:
-                    print(f"   ⚠️  No tweets passed time filter")
-            
             unique_tweets = time_filtered_tweets
         
         # Return ALL tweets if no limit specified, otherwise apply limit
         if max_tweets is None:
-            result = unique_tweets  # Use ALL tweets we paid for
+            result = unique_tweets
             print(f"✅ Collected and returning ALL {len(result)} tweets to pipeline")
         else:
             result = unique_tweets[:max_tweets]
-            print(f"✅ Collected {len(unique_tweets)} total tweets from API")
-            print(f"🎯 Final output: {len(result)} tweets (exactly as requested by pipeline limit)")
+            print(f"✅ Collected {len(unique_tweets)} unique user tweets")
+            print(f"🎯 Final output: {len(result)} tweets")
+            
+            # Log user breakdown
+            if result:
+                print("\n👥 Selected tweets by user:")
+                for tweet in result:
+                    username = tweet.get('username', 'unknown')
+                    text = tweet.get('text', '')[:100]
+                    print(f"   @{username}: {text}...")
         
         return result
+        
+    def _is_better_tweet(self, new_tweet: Dict, old_tweet: Dict) -> bool:
+        """
+        Compare two tweets and determine if the new one is better quality.
+        Returns True if new tweet should replace old tweet.
+        """
+        # Get engagement metrics
+        new_engagement = (
+            new_tweet.get('like_count', 0) + 
+            new_tweet.get('retweet_count', 0) * 2 + 
+            new_tweet.get('reply_count', 0)
+        )
+        old_engagement = (
+            old_tweet.get('like_count', 0) + 
+            old_tweet.get('retweet_count', 0) * 2 + 
+            old_tweet.get('reply_count', 0)
+        )
+        
+        # Get text lengths
+        new_text = new_tweet.get('text', '').strip()
+        old_text = old_tweet.get('text', '').strip()
+        
+        # Prefer longer, more engaged-with tweets
+        if new_engagement > old_engagement * 1.5:  # Significantly more engagement
+            return True
+        elif len(new_text) > len(old_text) * 1.5:  # Significantly longer text
+            return True
+        
+        return False
 
     async def _search_with_time_filter(self, keyword: str, start_time: str, end_time: str, max_tweets: int = None) -> List[Dict]:
         """Search for tweets with time filtering using Apify."""
@@ -193,14 +219,26 @@ class NFTTwitterScraper:
         # Convert times to Apify format
         since_str, until_str = self._convert_to_apify_time_format(start_time, end_time)
         
-        search_query = f"{keyword} since:{since_str} until:{until_str}"
+        # Remove quotes and special characters that might cause issues
+        cleaned_keyword = keyword.replace('"', '').replace("'", "")
         
-        # Prepare actor input
+        # Basic exclusions that won't interfere with the search
+        exclude_terms = [
+            '-giveaway',
+            '-airdrop',
+            '-whitelist'
+        ]
+        
+        # Construct search query with minimal filtering
+        search_query = f"{cleaned_keyword} nft {' '.join(exclude_terms)} lang:en since:{since_str} until:{until_str}"
+        print(f"    🔎 Search query: {search_query}")
+        
+        # Prepare actor input with minimal filtering
         actor_input = {
             "searchTerms": [search_query],
             "lang": "en",
             "maxItems": max_tweets or 15,
-            "twitterContent": keyword
+            "excludeRetweets": True
         }
         
         try:
@@ -216,7 +254,7 @@ class NFTTwitterScraper:
             run_data = run_response.json()
             
             run_id = run_data["data"]["id"]
-            print(f"    🚀 Started search: {run_id}")
+            print(f"    🚀 Started search with run ID: {run_id}")
             
             # Wait for completion and return results
             return await self._wait_for_completion(run_id)

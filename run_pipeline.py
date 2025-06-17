@@ -23,20 +23,20 @@ from sentiment_analyzer_advanced import SimpleNFTSentimentAnalyzer
 RUN_MODES = {
     'test': {
         'description': 'Quick test run',
-        'opensea_limit': 10,
-        'tweets_per_search': 5,
+        'opensea_limit': 3,
+        'tweets_per_search': 30,
         'collections': ['boredapeyachtclub', 'pudgypenguins', 'azuki'],
-        'use_historical_data': True,
+        'use_historical_data': False,
     },
     'full': {
         'description': 'Full production run',
         'opensea_limit': 1000,
-        'tweets_per_search': 15,
+        'tweets_per_search': 50,
         'collections': [
             'boredapeyachtclub', 'cryptopunks', 'pudgypenguins', 
             'azuki', 'clonex', 'doodles-official'
         ],
-        'use_historical_data': True,
+        'use_historical_data': False,
     }
 }
 
