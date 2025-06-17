@@ -289,7 +289,7 @@ Consider the OVERALL sentiment across all tweets together. Look for patterns, co
         },
         {
             "tweet_index": 2,
-            "sentiment": "neural"
+            "sentiment": "neutral"
         },
         ...
     ],
