@@ -23,9 +23,9 @@ from sentiment_analyzer_advanced import SimpleNFTSentimentAnalyzer
 RUN_MODES = {
     'test': {
         'description': 'Quick test run',
-        'opensea_limit': 3,
+        'opensea_limit': 10,
         'tweets_per_search': 5,
-        'collections': ['boredapeyachtclub', 'pudgypenguins'],
+        'collections': ['boredapeyachtclub', 'pudgypenguins', 'azuki'],
         'use_historical_data': True,
     },
     'full': {
