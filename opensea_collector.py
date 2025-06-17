@@ -6,6 +6,7 @@ from typing import List, Dict, Optional
 import time
 import os
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
 
 # Load environment variables from .env file
 load_dotenv()
@@ -137,10 +138,61 @@ class OpenSeaCollector:
     async def get_nft_details(self, collection_slug: str, identifier: str) -> Dict:
         """Get detailed information about a specific NFT."""
         try:
-            url = f"{self.base_url}/chain/ethereum/contract/{collection_slug}/nfts/{identifier}"
+            # Get contract address from collection slug
+            collection_url = f"{self.base_url}/collections/{collection_slug}"
+            collection_response = await self.client.get(collection_url)
+            collection_response.raise_for_status()
+            
+            # Parse collection response
+            try:
+                collection_data = collection_response.json()
+            except Exception as e:
+                print(f"Error parsing collection data for {collection_slug}: {e}")
+                return {}
+            
+            # Get contract address directly from the collection data
+            contract_address = None
+            if isinstance(collection_data, dict):
+                # Try to get contract address from the collection data
+                contract_address = collection_data.get("primary_asset_contracts", [{}])[0].get("address")
+            
+            if not contract_address:
+                # Fallback to known contract addresses for popular collections
+                known_contracts = {
+                    "boredapeyachtclub": "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d",
+                    "pudgypenguins": "0xbd3531da5cf5857e7cfaa92426877b022e612cf8",
+                    "cryptopunks": "0xb47e3cd837ddf8e4c57f05d70ab865de6e193bbb",
+                    "azuki": "0xed5af388653567af2f388e6224dc7c4b3241c544",
+                    "clonex": "0x49cf6f5d44e70224e2e23fdcdd2c053f30ada28b",
+                    "doodles-official": "0x8a90cab2b38dba80c64b7734e58ee1db38b8992e"
+                }
+                contract_address = known_contracts.get(collection_slug)
+            
+            if not contract_address:
+                print(f"No contract address found for {collection_slug}")
+                return {}
+            
+            # Get NFT details using contract address
+            url = f"{self.base_url}/chain/ethereum/contract/{contract_address}/nfts/{identifier}"
             response = await self.client.get(url)
             response.raise_for_status()
-            return response.json()
+            
+            # Parse NFT response
+            try:
+                nft_data = response.json()
+            except Exception as e:
+                print(f"Error parsing NFT data for {collection_slug}/{identifier}: {e}")
+                return {}
+            
+            if not isinstance(nft_data, dict):
+                print(f"Invalid NFT data format for {collection_slug}/{identifier}")
+                return {}
+            
+            return nft_data
+            
+        except httpx.HTTPStatusError as e:
+            print(f"HTTP error fetching NFT details for {collection_slug}/{identifier}: {e}")
+            return {}
         except Exception as e:
             print(f"Error fetching NFT details for {collection_slug}/{identifier}: {e}")
             return {}
@@ -194,6 +246,19 @@ class OpenSeaCollector:
                 print(f"  📊 Found {len(events_data['asset_events'])} historical sales")
                 for event in events_data["asset_events"]:
                     try:
+                        # Get detailed NFT information including rarity
+                        nft = event.get("nft", {})
+                        if not isinstance(nft, dict):
+                            print(f"Invalid NFT data in event: {nft}")
+                            continue
+                            
+                        nft_identifier = nft.get("identifier")
+                        if nft_identifier:
+                            nft_details = await self.get_nft_details(collection_slug, nft_identifier)
+                            if nft_details and "nft" in nft_details:
+                                # Update the event with detailed NFT data
+                                event["nft"] = nft_details["nft"]
+                        
                         sale_data = self._extract_sale_data(event, collection_slug, stats)
                         if sale_data:
                             all_sales.append(sale_data)
@@ -208,70 +273,48 @@ class OpenSeaCollector:
         
         return all_sales
     
-    def _extract_sale_data(self, event: Dict, collection_slug: str, stats: Dict) -> Optional[Dict]:
+    def _extract_sale_data(self, event: Dict, collection_slug: str, collection_stats: Dict) -> Dict:
         """Extract relevant data from a sale event."""
         try:
-            if not event.get("nft") or not event.get("payment"):
+            # Extract basic sale data
+            nft = event.get("nft", {})
+            if not isinstance(nft, dict):
                 return None
-            
-            nft = event["nft"]
-            payment = event["payment"]
-            
-            # Extract timestamps - handle different formats from OpenSea API
-            event_timestamp = event.get("event_timestamp")
-            if event_timestamp:
-                # Handle both string and integer timestamps
-                if isinstance(event_timestamp, str):
-                    # If it's already a string, parse it
-                    sale_time = datetime.datetime.fromisoformat(event_timestamp.replace('Z', '+00:00'))
-                elif isinstance(event_timestamp, (int, float)):
-                    # If it's a Unix timestamp, convert it
-                    sale_time = datetime.datetime.fromtimestamp(event_timestamp, tz=datetime.timezone.utc)
-                else:
-                    print(f"Unknown timestamp format: {type(event_timestamp)} - {event_timestamp}")
-                    return None
-            else:
-                return None
-            
-            # Calculate 24h before for Twitter search
-            search_start = sale_time - datetime.timedelta(hours=24)
-            
-            # Extract collection name from stats or use collection slug
-            collection_name = collection_slug.replace("-", " ").title()
-            if stats and "total" in stats:
-                # For OpenSea API v2, there's no nested 'collection' object
-                # Use the collection slug converted to a readable name
-                pass
-            
+                
             sale_data = {
-                # Identifiers
                 "collection_slug": collection_slug,
-                "collection_name": collection_name,
-                "nft_identifier": nft.get("identifier"),
-                "nft_name": nft.get("name"),
-                "token_id": nft.get("identifier"),
-                
-                # Sale information
-                "sale_price_wei": payment.get("quantity"),
-                "sale_price_eth": float(payment.get("quantity", 0)) / 1e18 if payment.get("quantity") else 0,
-                "sale_timestamp": sale_time.isoformat(),
-                "sale_timestamp_unix": int(sale_time.timestamp()),
-                
-                # Twitter search parameters
-                "twitter_search_start": search_start.isoformat(),
-                "twitter_search_end": sale_time.isoformat(),
-                "twitter_keywords": self._generate_twitter_keywords(nft, collection_slug, collection_name),
-                
-                # Additional metadata
-                "buyer": event.get("buyer", {}).get("address") if isinstance(event.get("buyer"), dict) else event.get("buyer"),
-                "seller": event.get("seller", {}).get("address") if isinstance(event.get("seller"), dict) else event.get("seller"),
-                "transaction_hash": event.get("transaction"),
-                "opensea_url": nft.get("opensea_url"),
-                
-                # Collection context from stats
-                "floor_price": stats.get("total", {}).get("floor_price") if stats else None,
-                "total_volume": stats.get("total", {}).get("volume") if stats else None,
-                "num_owners": stats.get("total", {}).get("num_owners") if stats else None,
+                "collection_name": collection_stats.get("name", ""),
+                "nft_identifier": nft.get("identifier", ""),
+                "nft_name": nft.get("name", ""),
+                "token_id": nft.get("identifier", ""),
+                "sale_price_wei": event.get("total_price", "0"),
+                "sale_price_eth": float(event.get("total_price", "0")) / 1e18,
+                "sale_timestamp": event.get("created_date", ""),
+                "sale_timestamp_unix": int(datetime.fromisoformat(event.get("created_date", "")).timestamp()),
+                "twitter_search_start": (datetime.fromisoformat(event.get("created_date", "")) - timedelta(days=1)).isoformat(),
+                "twitter_search_end": event.get("created_date", ""),
+                "twitter_keywords": self._generate_twitter_keywords(nft, collection_slug),
+                "buyer": event.get("winner_account", {}).get("address", ""),
+                "seller": event.get("seller", {}).get("address", ""),
+                "transaction_hash": event.get("transaction", {}).get("transaction_hash", ""),
+                "opensea_url": f"https://opensea.io/assets/ethereum/{nft.get('contract_address', '')}/{nft.get('identifier', '')}",
+                "floor_price": collection_stats.get("floor_price", 0),
+                "total_volume": collection_stats.get("total_volume", 0),
+                "num_owners": collection_stats.get("num_owners", 0),
+                "tweet_count": 0,  # Will be updated by Twitter scraper
+                "avg_sentiment": 0.0,  # Will be updated by sentiment analyzer
+                "sentiment_confidence": 0.0,  # Will be updated by sentiment analyzer
+                "consensus_quality": 0.0,  # Will be updated by sentiment analyzer
+                "positive_tweets": 0,  # Will be updated by sentiment analyzer
+                "negative_tweets": 0,  # Will be updated by sentiment analyzer
+                "neutral_tweets": 0,  # Will be updated by sentiment analyzer
+                "sentiment_range_min": 0.0,  # Will be updated by sentiment analyzer
+                "sentiment_range_max": 0.0,  # Will be updated by sentiment analyzer
+                "rarity_score": nft.get("rarity", {}).get("score"),
+                "rarity_rank": nft.get("rarity", {}).get("rank"),
+                "rarity_max_rank": nft.get("rarity", {}).get("max_rank"),
+                "rarity_tokens_scored": nft.get("rarity", {}).get("tokens_scored"),
+                "trait_count": nft.get("rarity", {}).get("trait_count")
             }
             
             return sale_data
@@ -280,26 +323,19 @@ class OpenSeaCollector:
             print(f"Error extracting sale data: {e}")
             return None
     
-    def _generate_twitter_keywords(self, nft: Dict, collection_slug: str, collection_name: str) -> List[str]:
+    def _generate_twitter_keywords(self, nft: Dict, collection_slug: str) -> List[str]:
         """Generate relevant keywords for Twitter searching."""
         keywords = []
         
         # Collection name variations
-        if collection_name:
-            keywords.append(collection_name)
-            # Add hashtag version
-            hashtag = "#" + collection_name.replace(" ", "").replace("-", "")
-            keywords.append(hashtag)
-        
-        # Collection slug as hashtag
-        keywords.append("#" + collection_slug.replace("-", ""))
-        
-        # NFT specific
         if nft.get("name"):
             keywords.append(nft["name"])
         
         if nft.get("identifier"):
             keywords.append(f"#{nft['identifier']}")
+        
+        # Collection slug as hashtag
+        keywords.append("#" + collection_slug.replace("-", ""))
         
         return keywords
     
