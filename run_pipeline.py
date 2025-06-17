@@ -17,15 +17,15 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from opensea_collector import OpenSeaCollector
 from twitter_scraper_apify import NFTTwitterScraper
-from sentiment_analyzer_advanced import AdvancedNFTSentimentAnalyzer
+from sentiment_analyzer_advanced import SimpleNFTSentimentAnalyzer
 
 # Configuration
 RUN_MODES = {
     'test': {
         'description': 'Quick test run',
-        'opensea_limit': 2,
-        'tweets_per_search': 3,
-        'collections': ['boredapeyachtclub', 'pudgypenguins'],
+        'opensea_limit': 10,
+        'tweets_per_search': 5,
+        'collections': ['boredapeyachtclub', 'pudgypenguins', 'azuki'],
         'use_historical_data': True,
     },
     'full': {
@@ -73,7 +73,7 @@ class NFTPipeline:
         
         self.opensea_collector = OpenSeaCollector()
         self.twitter_scraper = NFTTwitterScraper()
-        self.sentiment_analyzer = AdvancedNFTSentimentAnalyzer()
+        self.sentiment_analyzer = SimpleNFTSentimentAnalyzer()
         
         print("✅ Components initialized\n")
             
@@ -233,20 +233,6 @@ class NFTPipeline:
                 
                 metadata_df = pd.DataFrame(enhanced_nft_sales)
                 metadata_df.to_csv(f"{OUTPUT_DIR}/nft_metadata.csv", index=False)
-                
-                # Print summary of collection stats
-                print("\n📊 Collection Statistics:")
-                collection_stats = features_df.groupby('collection_name').agg({
-                    'floor_price': 'first',
-                    'total_volume': 'first',
-                    'num_owners': 'first'
-                }).reset_index()
-                
-                for _, row in collection_stats.iterrows():
-                    print(f"  {row['collection_name']}:")
-                    print(f"    Floor Price: {row['floor_price']:.2f} ETH")
-                    print(f"    Total Volume: {row['total_volume']:.2f} ETH")
-                    print(f"    Owners: {row['num_owners']:,}")
             
             if tweets:
                 tweets_df = pd.DataFrame(tweets)
