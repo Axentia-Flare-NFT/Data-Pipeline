@@ -112,32 +112,32 @@ class NFTTwitterScraper:
         all_tweets = []
         
         # Search for each keyword
-        for keyword in keywords[:3]:  # Limit to top 3 keywords
-            try:
-                tweets = await self._search_with_time_filter(keyword, search_start, search_end, max_tweets)
+        keyword = keywords[0]   # Limit to top 3 keywords
+        try:
+            tweets = await self._search_with_time_filter(keyword, search_start, search_end, max_tweets)
+            
+            if tweets:
+                print(f"    ✅ Found {len(tweets)} tweets for '{keyword}'")
                 
-                if tweets:
-                    print(f"    ✅ Found {len(tweets)} tweets for '{keyword}'")
-                    
-                    # Format tweets and add sale context
-                    for tweet in tweets:
-                        formatted_tweet = self._format_tweet_data(tweet, nft_name, collection_name, keyword)
-                        if formatted_tweet:
-                            # Add sale context
-                            formatted_tweet.update({
-                                'sale_price_eth': nft_sale.get('sale_price_eth', 0),
-                                'sale_timestamp': nft_sale.get('sale_timestamp', ''),
-                                'hours_before_sale': self._calculate_hours_before_sale(
-                                    formatted_tweet.get('created_at'), 
-                                    nft_sale.get('sale_timestamp', '')
-                                )
-                            })
-                            all_tweets.append(formatted_tweet)
+                # Format tweets and add sale context
+                for tweet in tweets:
+                    formatted_tweet = self._format_tweet_data(tweet, nft_name, collection_name, keyword)
+                    if formatted_tweet:
+                        # Add sale context
+                        formatted_tweet.update({
+                            'sale_price_eth': nft_sale.get('sale_price_eth', 0),
+                            'sale_timestamp': nft_sale.get('sale_timestamp', ''),
+                            'hours_before_sale': self._calculate_hours_before_sale(
+                                formatted_tweet.get('created_at'), 
+                                nft_sale.get('sale_timestamp', '')
+                            )
+                        })
+                        all_tweets.append(formatted_tweet)
                 
-            except Exception as e:
-                print(f"    ❌ Error searching for '{keyword}': {e}")
-                continue
-        
+        except Exception as e:
+            print(f"    ❌ Error searching for '{keyword}': {e}")
+            
+    
         # Remove duplicates
         unique_tweets = self._remove_duplicate_tweets(all_tweets)
         print(f"   🔄 After deduplication: {len(all_tweets)} → {len(unique_tweets)} tweets")
