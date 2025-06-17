@@ -17,7 +17,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from opensea_collector import OpenSeaCollector
 from twitter_scraper_apify import NFTTwitterScraper
-from sentiment_analyzer_advanced import AdvancedNFTSentimentAnalyzer
+from sentiment_analyzer_advanced import SimpleNFTSentimentAnalyzer
 
 # Configuration
 RUN_MODES = {
@@ -73,7 +73,7 @@ class NFTPipeline:
         
         self.opensea_collector = OpenSeaCollector()
         self.twitter_scraper = NFTTwitterScraper()
-        self.sentiment_analyzer = AdvancedNFTSentimentAnalyzer()
+        self.sentiment_analyzer = SimpleNFTSentimentAnalyzer()
         
         print("✅ Components initialized\n")
             
