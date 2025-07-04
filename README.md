@@ -1,8 +1,8 @@
-# NFT Data Collection Pipeline
+# Data Pipeline
 
 Revamped consenus approach in 'Better' branch.
 
-A streamlined NFT data collection and sentiment analysis pipeline that combines OpenSea market data, Twitter social metrics, and AI-powered sentiment analysis for machine learning training.
+A streamlined data collection and sentiment analysis pipeline that combines OpenSea market data, Twitter social metrics, and AI-powered sentiment analysis for machine learning training.
 
 ## 🚀 Quick Start
 

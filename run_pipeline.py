@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NFT Data Collection Pipeline
+Data Pipeline
 
 Collects NFT sales data, tweets, and performs sentiment analysis.
 """
@@ -322,7 +322,7 @@ class NFTPipeline:
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description='NFT Data Collection Pipeline')
+    parser = argparse.ArgumentParser(description='Data Pipeline')
     parser.add_argument('--mode', choices=['test', 'full'], default='test',
                        help='Run mode (test/full)')
     
